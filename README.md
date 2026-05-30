@@ -1,145 +1,263 @@
 # Push 2 Screen Mirror
 
-把电脑屏幕上的**自定义区域**实时投屏到 **Ableton Push 2** 的屏幕(960×160)上，
-**无需启动 Ableton Live 或任何 DAW**。
+**[中文版说明 (Chinese)](#中文说明)**
 
-通过 USB 直接驱动 Push 2 的显示屏，实现细节完全依据
-[Ableton 官方协议文档](https://github.com/Ableton/push-interface)。
+Mirror a custom region of your computer screen onto the **Ableton Push 2** display (960×160) in real time — **no DAW required**.
+
+Drives the Push 2 display directly over USB, following the official [Ableton Push 2 Interface Specification](https://github.com/Ableton/push-interface).
+
+---
+
+## Features
+
+- **GUI application** — modern dark UI (customtkinter), no command-line needed
+- **Region selection** — drag-to-select overlay spanning all monitors; move, resize, lock aspect ratio
+- **~48 FPS** — dual-thread pipeline (capture + send in parallel), high-resolution timer
+- **Fast capture** — [bettercam](https://github.com/RootKit-Org/BetterCam) (Desktop Duplication API) with automatic fallback to mss
+- **Scale modes** — fit (letterbox), stretch, or crop-to-fill
+- **Rotation** — 0° / 90° CW / 180° / 90° CCW; select vertically, display horizontally
+- **Backlight control** — brightness slider via MIDI sysex; only briefly opens the MIDI port while adjusting, never locks it out from your DAW
+- **System tray** — close window to minimize; right-click tray icon to start/stop/show/quit
+- **Single instance** — launching again brings the existing window to front
+- **Portable** — PyInstaller-packaged standalone exe, no Python installation needed on target machine
+- **DAW-friendly** — does not occupy Push 2 MIDI ports when idle; pads/knobs/buttons remain fully usable by your DAW
+
+---
+
+## How It Works
+
+```
+Screen capture (bettercam/mss) → Scale/Rotate → BGR565 + XOR → USB bulk transfer → Push 2 display
+```
+
+- Display: 960 × 160 px, 16-bit color (BGR565)
+- Each frame: 16-byte header + 327,680 bytes pixel data, sent as **two separate bulk transfers** on endpoint `0x01`
+- Capture prefers bettercam (DDA, ~3× faster than mss); falls back to mss when unavailable or when the region spans multiple monitors
+
+---
+
+## Quick Start (GUI)
+
+### Pre-built executable (recommended)
+
+1. Download the `Push2Mirror-GUI` folder from [Releases](https://github.com/OTKrd/push2-screen-mirror/releases) (or build it yourself, see below).
+2. Close **Ableton Live** (or any software using Push 2).
+3. Connect Push 2 via USB and power it on.
+4. Double-click **`Push2Mirror-GUI.exe`**.
+5. Click **Select Region** → drag to select → press **Enter**.
+6. Click **▶ Start**.
+
+### From source
+
+Requires **Python 3.9+** on Windows.
+
+```powershell
+git clone https://github.com/OTKrd/push2-screen-mirror.git
+cd push2-screen-mirror
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+py gui_main.py
+```
+
+---
+
+## Windows USB Driver
+
+The program accesses the Push 2 display via libusb. In many cases it works out of the box (especially if Ableton Live has been installed). If the GUI shows "Push 2 not connected":
+
+### Option A: UsbDk (recommended, non-invasive)
+
+Install [UsbDk](https://github.com/daynix/UsbDk/releases). It does **not** replace the Push 2 driver and does **not** affect Ableton Live. Can be uninstalled at any time.
+
+### Option B: Zadig + WinUSB (invasive)
+
+> ⚠️ This replaces the driver for the Push 2 Display interface. Ableton Live may not be able to drive the display until you revert. To revert: uninstall the device in Device Manager and re-plug Push 2.
+
+1. Download [Zadig](https://zadig.akeo.ie/), open it with Push 2 connected.
+2. `Options → List All Devices`.
+3. Select **`Ableton Push 2 (Interface 0)`** or the entry containing **`Display`** — do **not** select the MIDI interface.
+4. Choose **`WinUSB`** on the right, click **Replace Driver**.
+
+---
+
+## GUI Controls
+
+| Control | Description |
+| --- | --- |
+| **Status dot** | Green = Push 2 connected and ready; Red = not connected |
+| **Select Region** | Opens a transparent overlay across all monitors. Drag to select, drag inside to move, drag edges/corners to resize. Press **R** to reset to target ratio, **L** to lock/unlock ratio, **Enter** to confirm, **Esc** to cancel. |
+| **Scale mode** | Fit (letterbox) / Stretch / Crop-to-fill |
+| **Rotation** | None / CW 90° / 180° / CCW 90°. With 90°/270°, the selection target becomes 1:6 (vertical select → horizontal display). |
+| **Backlight brightness** | Slider 0–255. Sent via MIDI sysex; port is only opened momentarily. Note: USB-powered Push 2 (no external PSU) is hardware-limited to ~7% max brightness. |
+| **Auto-start** | When checked, mirroring starts automatically on next launch using the last saved region. |
+| **Start / Stop** | Toggle mirroring. |
+| **Close window** | Minimizes to system tray. Right-click the tray icon for Start / Stop / Show / Quit. |
+
+---
+
+## Building the Executable
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+pip install pyinstaller
+pyinstaller push2mirror_gui.spec --noconfirm
+```
+
+Output: `dist/Push2Mirror-GUI/` — the entire folder is portable.
+
+---
+
+## DAW Coexistence
+
+| State | MIDI ports (pads/knobs/LEDs) | Display |
+| --- | --- | --- |
+| GUI open, not mirroring | ✅ Not occupied | ✅ Not occupied |
+| Dragging brightness slider | Briefly opens MIDI output, releases immediately | — |
+| Mirroring | ✅ Not occupied | Occupied (DAW cannot drive the display) |
+| Quit (tray → Quit) | ✅ All released | ✅ All released |
+
+---
+
+## Safety
+
+This tool only sends the **officially documented display frame header**. It does not touch any reserved, diagnostic, or firmware-flashing commands. Do not modify `FRAME_HEADER` in `push2_mirror/display.py` — an incorrect header could theoretically brick the device.
+
+---
+
+## License
+
+MIT
+
+---
+
+---
+
+# 中文说明
+
+把电脑屏幕上的**自定义区域**实时投屏到 **Ableton Push 2** 的屏幕(960×160)上,**无需启动 Ableton Live 或任何 DAW**。
+
+通过 USB 直接驱动 Push 2 的显示屏,实现细节完全依据 [Ableton 官方协议文档](https://github.com/Ableton/push-interface)。
+
+---
+
+## 功能特性
+
+- **图形界面** — 现代深色 UI(customtkinter),无需命令行
+- **区域框选** — 半透明遮罩覆盖所有显示器;可移动、缩放、锁定宽高比
+- **~48 FPS** — 双线程流水线(采集 + 发送并行)+ 高精度定时器
+- **高效采集** — 优先使用 bettercam(Desktop Duplication API),不可用时自动回退 mss
+- **缩放方式** — 留黑边 / 拉满 / 裁剪填满
+- **旋转** — 0° / 顺时针 90° / 180° / 逆时针 90°;可竖向框选、横向显示
+- **背光亮度** — 通过 MIDI sysex 调节;仅在拖动滑块时短暂占用 MIDI 端口,不影响 DAW
+- **系统托盘** — 关闭窗口即最小化到托盘;右键托盘图标可 开始/停止/显示/退出
+- **单实例保护** — 重复启动时唤醒已有窗口,不会开多个
+- **免安装** — PyInstaller 打包为独立 exe,目标机器无需安装 Python
+- **与 DAW 共存** — 空闲时不占用 Push 2 MIDI 端口;pad/旋钮/按钮可被 DAW 正常使用
 
 ---
 
 ## 工作原理
 
 ```
-屏幕区域截取(bettercam/mss) → 按 6:1 缩放并留黑边 → 转 BGR565 + XOR → USB 推送给 Push 2
+屏幕区域截取(bettercam/mss) → 缩放/旋转 → BGR565 + XOR → USB 推送给 Push 2
 ```
 
-- 屏幕分辨率：960 × 160，16 位色（BGR565）
-- 每帧：16 字节帧头 + 327680 字节像素数据,**帧头与像素数据必须分两次 bulk 传输**
-  (端点 `0x01`;合并成一次会导致背光亮但无图像)
-- 采集优先用 **bettercam(Windows Desktop Duplication API)**,比 mss 快 3 倍以上、更省 CPU,
-  不可用/跨屏时自动回退 mss
-- 双线程流水线(采集 + 发送并行)+ 高精度定时器,实测 **~48 FPS**(上限受 USB 发送约束)
+- 屏幕:960 × 160 像素,16 位色(BGR565)
+- 每帧:16 字节帧头 + 327,680 字节像素数据,通过端点 `0x01` **分两次 bulk 传输**
+- 采集优先使用 bettercam(DDA,比 mss 快约 3 倍);不可用或跨屏时自动回退 mss
 
 ---
 
-## 1. 安装依赖
+## 快速开始(GUI)
 
-需要 **Python 3.9+**。
+### 使用预编译 exe(推荐)
+
+1. 从 [Releases](https://github.com/OTKrd/push2-screen-mirror/releases) 下载 `Push2Mirror-GUI` 文件夹(或自行构建)。
+2. 关闭 **Ableton Live**(或其他使用 Push 2 的软件)。
+3. 通过 USB 连接 Push 2 并开机。
+4. 双击 **`Push2Mirror-GUI.exe`**。
+5. 点击 **重新框选区域** → 拖拽选区 → 按 **Enter** 确认。
+6. 点击 **▶ 开始投屏**。
+
+### 从源码运行
+
+需要 Windows + **Python 3.9+**。
 
 ```powershell
-cd C:\Users\xurendi\projects\push2-screen-mirror
+git clone https://github.com/OTKrd/push2-screen-mirror.git
+cd push2-screen-mirror
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+py gui_main.py
 ```
-
-> `libusb-package` 已经内置了 libusb 的 DLL，所以**通常不用单独安装 libusb**。
 
 ---
 
-## 2. 配置 Windows 驱动（关键一步）
+## Windows USB 驱动配置
 
-在 Windows 上，程序要通过 USB 访问 Push 2 屏幕，需要一个 libusb 可访问的驱动。
-**先什么都别装，直接跑一次检测**——有时 Ableton 装好后系统里已经有可用驱动：
+程序通过 libusb 访问 Push 2 显示接口。很多情况下无需额外配置(尤其是已安装过 Ableton Live)。若 GUI 显示"Push 2 未连接":
 
-```powershell
-py main.py check
-```
+### 方案 A:UsbDk(推荐,无侵入性)
 
-- 显示 **`[就绪]`** → 跳过本节，直接看第 3 步。
-- 显示 **`[未就绪]`** → 按下面任选一种方案配置驱动。
+安装 [UsbDk](https://github.com/daynix/UsbDk/releases)。**不会替换** Push 2 原有驱动,**不影响** Ableton Live,可随时卸载。
 
-### 方案 A：UsbDk（推荐，最不具侵入性）
+### 方案 B:Zadig + WinUSB(有侵入性)
 
-UsbDk 是一个**系统级**的一次性安装，**不会替换 Push 2 原本的驱动，也不影响
-Ableton Live 继续正常使用 Push 2**，随时可在「添加或删除程序」里卸载还原。
+> ⚠️ 此方式会**接管** Push 2 Display 接口的驱动,Ableton Live 可能暂时无法驱动屏幕。恢复方法:在设备管理器中卸载该设备并重新插拔 Push 2。
 
-1. 到 [UsbDk Releases](https://github.com/daynix/UsbDk/releases) 下载并安装最新的
-   `UsbDk_*.msi`。
-2. 安装后重新插拔一次 Push 2，再次运行 `py main.py check` 确认就绪。
-
-### 方案 B：Zadig + WinUSB（较具侵入性）
-
-> ⚠️ 这种方式会**接管 Push 2「Display」接口的驱动**，可能导致 Ableton Live
-> 暂时无法驱动 Push 2 屏幕。需要恢复时，在设备管理器里卸载该设备并重新插拔，
-> 让 Windows 装回原驱动即可。
-
-1. 下载 [Zadig](https://zadig.akeo.ie/)，连接 Push 2 后打开。
-2. 菜单 `Options → List All Devices`。
-3. 在下拉列表里选择 **`Ableton Push 2 (Interface 0)`** 或名称含
-   **`Display`** 的那一项（**不要**选 MIDI 接口）。
-4. 右侧驱动选择 **`WinUSB`**，点击 **Replace Driver**。
-5. 完成后运行 `py main.py check` 确认就绪。
+1. 下载 [Zadig](https://zadig.akeo.ie/),连接 Push 2 后打开。
+2. `Options → List All Devices`。
+3. 选择 **`Ableton Push 2 (Interface 0)`** 或含 **`Display`** 的条目(**不要**选 MIDI 接口)。
+4. 右侧选择 **`WinUSB`**,点击 **Replace Driver**。
 
 ---
 
-## 3. 选择要投屏的区域
+## 界面说明
 
-```powershell
-py main.py select
-```
-
-会弹出一个覆盖主显示器的半透明遮罩：
-
-- **拖拽**：框选一个区域
-- **拖动矩形内部**：移动
-- **拖动边 / 角**：调整大小
-- **Enter / 双击**：确认并保存
-- **Esc**：取消
-
-界面会实时显示选区的尺寸与宽高比（目标是 6:1，越接近黑边越少）。
-选区会保存在 `~/.push2_mirror/region.json`，下次直接复用。
-
-> 多显示器：框选界面会覆盖**整个虚拟桌面(所有显示器)**,可以跨屏框选,
-> 也能在副屏(含负坐标的显示器)上选区。程序已声明「每显示器 DPI 感知」,
-> 在不同缩放比例的多屏环境下,框选与抓取使用一致的物理像素坐标。
-
----
-
-## 4. 开始投屏
-
-```powershell
-py main.py run                 # 用已保存的区域
-py main.py run --select        # 先框选再投屏
-py main.py run --fps 24        # 指定帧率
-py main.py run --region 0,0,1920,320
-```
-
-按 **Ctrl+C** 停止，程序会自动把 Push 2 屏幕清黑。
-
----
-
-## 命令速查
-
-| 命令 | 说明 |
+| 控件 | 说明 |
 | --- | --- |
-| `py main.py check` | 检测 Push 2 连接 / 驱动是否就绪 |
-| `py main.py select` | 框选并保存区域 |
-| `py main.py run` | 开始投屏（默认用已保存区域） |
+| **状态指示灯** | 绿 = Push 2 已连接就绪;红 = 未连接 |
+| **重新框选区域** | 打开覆盖所有显示器的半透明遮罩。拖拽框选,拖动内部移动,拖边/角缩放。按 **R** 恢复目标比例,**L** 锁定/解锁比例,**Enter** 确认,**Esc** 取消。 |
+| **缩放方式** | 留黑边 / 拉满 / 裁剪填满 |
+| **旋转** | 不旋转 / 顺时针 90° / 180° / 逆时针 90°。选择 90°/270° 后,框选目标变为 1:6(竖向框选 → 横向显示)。 |
+| **背光亮度** | 滑块 0–255,通过 MIDI sysex 发送;仅在拖动时短暂占用 MIDI 端口。注意:仅 USB 供电的 Push 2(未接外部电源)最大亮度被硬件限制在约 7%。 |
+| **启动时自动投屏** | 勾选后,下次启动自动使用上次区域开始投屏。 |
+| **开始 / 停止** | 切换投屏状态。 |
+| **关闭窗口** | 最小化到系统托盘。右键托盘图标可 开始/停止/显示/退出。 |
 
 ---
 
-## 常见问题
+## 构建 exe
 
-- **找不到设备 / 无法打开接口**：确认 Push 2 已开机、**Ableton Live 已完全关闭**
-  （Live 会独占 USB 接口），并完成第 2 步的驱动配置。
-- **画面有黑边**：这是「保持比例」模式的正常表现。Push 2 屏是 6:1 的超宽屏，
-  框选区域越接近 6:1，黑边越少。
-- **帧率**:实测可稳定在 ~48 FPS。关键优化:① 采集用 bettercam(DDA),比 mss
-  快 3 倍、更省 CPU;② 双线程流水线让采集与发送并行;③ Windows 高精度定时器让
-  帧率节流精确。`--fps` 设置目标帧率(默认 60,实际上限受 USB 发送约束约 49)。
-  注意:帧头与像素数据**必须分两次 USB 传输**,合并虽然更快但会导致屏幕背光亮
-  却无图像,因此不能合并。
-- **采集后端**:启动日志会显示「采集后端: bettercam / mss」。若显示 mss,说明
-  bettercam 未成功加载(或区域跨显示器),功能不受影响,只是 CPU 占用略高。
-- **想恢复 Live 使用 Push 2**：若用过 Zadig，按第 2 步方案 B 的恢复说明操作；
-  UsbDk 方案则无需任何恢复。
+```powershell
+.\.venv\Scripts\Activate.ps1
+pip install pyinstaller
+pyinstaller push2mirror_gui.spec --noconfirm
+```
+
+产物:`dist/Push2Mirror-GUI/`,整个文件夹可直接拷走使用。
+
+---
+
+## 与 DAW 共存
+
+| 状态 | MIDI 端口(pad/旋钮/LED) | 显示屏 |
+| --- | --- | --- |
+| GUI 开着但未投屏 | ✅ 不占用 | ✅ 不占用 |
+| 拖动亮度滑块时 | 短暂打开 MIDI 输出,立即释放 | — |
+| 投屏中 | ✅ 不占用 | 占用(DAW 此时无法驱动屏幕) |
+| 退出(托盘 → 退出) | ✅ 全部释放 | ✅ 全部释放 |
 
 ---
 
 ## 安全说明
 
-本工具只发送官方文档中**公开的显示帧头**，不触碰任何保留/诊断/固件刷写指令。
-请勿修改 `push2_mirror/display.py` 中的 `FRAME_HEADER`，错误的帧头理论上可能
-损坏设备。
+本工具仅发送官方文档中**公开的显示帧头**,不触碰任何保留/诊断/固件刷写指令。请勿修改 `push2_mirror/display.py` 中的 `FRAME_HEADER`,错误的帧头理论上可能损坏设备。
+
+---
+
+## 许可证
+
+MIT
