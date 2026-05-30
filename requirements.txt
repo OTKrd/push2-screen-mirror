@@ -1,0 +1,7 @@
+pyusb>=1.2.1
+libusb-package>=1.0.26.0
+mss>=9.0.1
+numpy>=1.24.0
+Pillow>=10.0.0
+# 高效屏幕采集(Windows Desktop Duplication API)。装不上时会自动回退到 mss。
+bettercam>=1.0.0; sys_platform == "win32"
